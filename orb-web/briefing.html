@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jarvis Briefing</title>
+<style>
+  :root {
+    --card: rgba(16, 22, 34, 0.82);
+    --line: rgba(160, 190, 255, 0.16);
+    --text: #f2f5fb;
+    --dim: rgba(225, 232, 245, 0.58);
+    --faint: rgba(225, 232, 245, 0.36);
+    --accent: #f5a524;
+    --overdue: #ff6b6b;
+    --blue: #9ec2ff;
+  }
+  html, body {
+    margin: 0;
+    background: transparent;
+    color: var(--text);
+    font: 13px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    -webkit-user-select: none;
+    user-select: none;
+    overflow: hidden;
+  }
+  body.preview { background: radial-gradient(ellipse at 50% 30%, #12305e 0%, #071226 60%, #02050c 100%); min-height: 100vh; padding-top: 24px; }
+  .card {
+    box-sizing: border-box;
+    width: 520px;
+    max-height: calc(100vh - 8px);
+    margin: 0 auto;
+    padding: 18px 20px 14px;
+    background: var(--card);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 18px;
+    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    -webkit-backdrop-filter: blur(24px) saturate(140%);
+    backdrop-filter: blur(24px) saturate(140%);
+    overflow-y: auto;
+    opacity: 0;
+    transform: translateY(-6px);
+    transition: opacity 0.35s ease, transform 0.35s ease;
+  }
+  .card.shown { opacity: 1; transform: none; }
+  .card::-webkit-scrollbar { width: 0; }
+  header { display: flex; align-items: baseline; justify-content: space-between; color: var(--dim); font-size: 12px; }
+  header .close { cursor: pointer; color: var(--faint); font-size: 15px; line-height: 1; padding: 2px 4px; border-radius: 6px; }
+  header .close:hover { color: var(--text); background: rgba(255, 255, 255, 0.08); }
+  h1 { margin: 8px 0 14px; font-size: 19px; font-weight: 600; letter-spacing: -0.01em; }
+  h1.overdue::before { content: ""; display: inline-block; width: 8px; height: 8px; margin: 0 8px 2px 0; border-radius: 50%; background: var(--overdue); box-shadow: 0 0 10px var(--overdue); }
+  h2 { margin: 16px 0 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); }
+  .row { display: flex; gap: 14px; padding: 10px 12px; margin: 6px 0; border-radius: 12px; background: rgba(255, 255, 255, 0.045); }
+  .time { width: 64px; flex: none; border-right: 2px solid var(--accent); padding-right: 10px; color: var(--accent); font-size: 17px; font-weight: 600; line-height: 1.1; }
+  .time small { display: block; color: var(--dim); font-size: 11px; font-weight: 500; margin-top: 3px; }
+  .what { min-width: 0; }
+  .title { font-size: 14px; font-weight: 600; }
+  .sub { color: var(--dim); font-size: 12px; margin-top: 2px; }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li { display: flex; gap: 10px; padding: 6px 2px; border-bottom: 1px solid var(--line); }
+  li:last-child { border-bottom: none; }
+  .dot { flex: none; width: 7px; height: 7px; margin-top: 6px; border-radius: 50%; background: var(--blue); }
+  .dot.overdue { background: var(--overdue); box-shadow: 0 0 8px var(--overdue); }
+  .tag { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 6px; font-size: 10.5px; font-weight: 600; color: #1b1203; background: var(--accent); vertical-align: 1px; }
+  .tag.red { background: var(--overdue); color: #2a0606; }
+  .empty { color: var(--faint); font-size: 12px; padding: 4px 2px; }
+  footer { margin-top: 12px; color: var(--faint); font-size: 11px; }
+  .loading { display: flex; align-items: center; gap: 10px; color: var(--dim); padding: 6px 0 8px; }
+  .spinner { width: 14px; height: 14px; border: 2px solid rgba(158, 194, 255, 0.25); border-top-color: var(--blue); border-radius: 50%; animation: spin 0.9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="card" id="card"></div>
+<script>
+(() => {
+  'use strict';
+  const bridge = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.briefing;
+  if (!bridge) document.body.classList.add('preview');
+  const card = document.getElementById('card');
+
+  const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const today = () => new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  const greeting = () => { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'; };
+  const clock = (iso) => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).replace(/\s?(AM|PM)/, ' $1');
+
+  function header() {
+    return `<header><span>${greeting()} · ${esc(today())}</span><span class="close" title="Close" onclick="briefing.close()">✕</span></header>`;
+  }
+
+  function show() {
+    requestAnimationFrame(() => card.classList.add('shown'));
+    if (bridge) bridge.postMessage({ action: 'height', height: card.scrollHeight });
+  }
+
+  function loading() {
+    card.innerHTML = header() + '<div class="loading"><div class="spinner"></div>Putting your day together…</div>';
+    show();
+  }
+
+  function render(data) {
+    const s = data.summary || {};
+    const events = data.events || [];
+    const reminders = data.reminders || [];
+    const overdue = reminders.filter((r) => r.overdue).length + (s.priorities || []).filter((p) => p.overdue).length;
+    let html = header();
+    html += `<h1 class="${overdue ? 'overdue' : ''}">${esc(s.headline || 'Here is your day.')}</h1>`;
+
+    html += '<h2>Today</h2>';
+    html += events.length ? events.map((e) => {
+      const time = e.allDay ? 'All day' : clock(e.start);
+      const [hm, ampm] = time.split(' ');
+      const sub = [e.location, e.allDay ? null : `until ${clock(e.end)}`, e.calendar].filter(Boolean).join(' · ');
+      return `<div class="row"><div class="time">${esc(hm)}<small>${esc(ampm || '')}</small></div><div class="what"><div class="title">${esc(e.title)}</div><div class="sub">${esc(sub)}</div></div></div>`;
+    }).join('') : '<div class="empty">Nothing on the calendar.</div>';
+
+    if ((s.priorities || []).length) {
+      html += '<h2>Priorities</h2><ul>' + s.priorities.map((p) =>
+        `<li><span class="dot ${p.overdue ? 'overdue' : ''}"></span><div><div class="title">${esc(p.title)}${p.overdue ? '<span class="tag red">Overdue</span>' : p.due ? `<span class="sub"> · ${esc(p.due)}</span>` : ''}</div><div class="sub">${esc(p.why)}</div></div></li>`).join('') + '</ul>';
+    }
+    const openReminders = reminders.filter((r) => !(s.priorities || []).some((p) => p.title === r.title));
+    if (openReminders.length) {
+      html += '<h2>Reminders</h2><ul>' + openReminders.slice(0, 6).map((r) =>
+        `<li><span class="dot ${r.overdue ? 'overdue' : ''}"></span><div><div class="title">${esc(r.title)}${r.overdue ? '<span class="tag red">Overdue</span>' : ''}</div><div class="sub">${esc([r.due ? new Date(r.due).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : null, r.list].filter(Boolean).join(' · '))}</div></div></li>`).join('') + '</ul>';
+    }
+    if ((s.messages || []).length) {
+      html += '<h2>Texts</h2><ul>' + s.messages.map((m) =>
+        `<li><span class="dot"></span><div><div class="title">${esc(m.from)}${m.needsReply ? '<span class="tag">Needs reply</span>' : ''}</div><div class="sub">${esc(m.summary)}</div></div></li>`).join('') + '</ul>';
+    }
+    if ((s.email || []).length) {
+      html += '<h2>Email</h2><ul>' + s.email.map((e) =>
+        `<li><span class="dot"></span><div><div class="title">${esc(e.from)} · ${esc(e.subject)}${e.important ? '<span class="tag">Important</span>' : ''}</div><div class="sub">${esc(e.summary)}</div></div></li>`).join('') + '</ul>';
+    }
+
+    const notes = [];
+    const src = data.sources || {};
+    if (src.messages && src.messages !== 'ok') notes.push(/Full Disk Access/i.test(src.messages) ? 'Texts: give Jarvis Orb Full Disk Access to include them.' : `Texts unavailable (${src.messages}).`);
+    if (src.reminders && src.reminders !== 'ok') notes.push('Reminders unavailable.');
+    if (src.calendar && src.calendar !== 'ok') notes.push('Calendar unavailable.');
+    if (src.gmail && src.gmail !== 'ok') notes.push('Email summary unavailable this time.');
+    if (notes.length) html += `<footer>${notes.map(esc).join(' ')}</footer>`;
+
+    card.innerHTML = html;
+    show();
+  }
+
+  window.briefing = {
+    loading,
+    render,
+    close() { if (bridge) bridge.postMessage({ action: 'close' }); },
+  };
+
+  // Browser preview with sample data.
+  if (!bridge) {
+    const t = (h, m) => { const d = new Date(); d.setHours(h, m, 0, 0); return d.toISOString(); };
+    render({
+      events: [{ title: 'Team standup', start: t(10, 0), end: t(10, 30), location: 'Zoom', calendar: 'Work', allDay: false }, { title: 'Gym', start: t(18, 0), end: t(19, 0), calendar: 'Personal', allDay: false }],
+      reminders: [{ title: 'Submit lab report', due: t(9, 0), overdue: true, list: 'School' }, { title: 'Call dentist', due: t(17, 0), overdue: false, list: 'Personal' }],
+      summary: {
+        headline: 'Two events today, one overdue reminder.',
+        priorities: [{ title: 'Submit lab report', why: 'Was due this morning.', overdue: true }],
+        messages: [{ from: 'Sam', summary: 'Asked if you can make dinner Friday at 7.', needsReply: true }],
+        email: [{ from: 'Prof. Lee', subject: 'Midterm moved', summary: 'The midterm moved to next Thursday.', important: true }],
+      },
+      sources: { calendar: 'ok', reminders: 'ok', messages: 'ok', gmail: 'ok' },
+    });
+  }
+})();
+</script>
+</body>
+</html>

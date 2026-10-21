@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jarvis Orb</title>
+<style>
+  html, body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+    background: transparent;
+    -webkit-user-select: none;
+    user-select: none;
+    cursor: default;
+  }
+  /* Browser preview only: a stand-in for a dark desktop. */
+  body.preview {
+    background: radial-gradient(ellipse at 50% 40%, #0b1430 0%, #050914 55%, #02040a 100%);
+  }
+  canvas {
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    width: min(100vw, 100vh);
+    height: min(100vw, 100vh);
+    display: block;
+  }
+  #fps {
+    position: fixed;
+    left: 8px;
+    top: 8px;
+    font: 11px ui-monospace, monospace;
+    color: #8fb0ff;
+    display: none;
+  }
+</style>
+</head>
+<body>
+<canvas id="orb"></canvas>
+<div id="fps"></div>
+<script src="orb.js"></script>
+</body>
+</html>
