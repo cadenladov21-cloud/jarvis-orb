@@ -554,7 +554,7 @@ function handleLine(task, m) {
   } else if (m.type === 'assistant' && m.error) {
     // e.g. authentication_failed: the message text says what to do ("Please run /login").
     const said = (m.message?.content || []).filter((b) => b.type === 'text').map((b) => b.text).join(' ');
-    task.assistantError = describeError(m.error, said);
+    task.assistantError = describeError(m.error, said, task.proc.useApiKey);
   } else if (m.type === 'result') {
     if (m.is_error || m.subtype !== 'success') {
       finish(task, { type: 'error', id: task.id, message: task.assistantError || resultError(m) });
@@ -564,11 +564,11 @@ function handleLine(task, m) {
   }
 }
 
-function describeError(kind, said) {
+function describeError(kind, said, usedApiKey) {
   if (kind === 'authentication_failed') {
-    return hasApiKey()
+    return usedApiKey
       ? `Claude rejected the API key in the Keychain item ${API_KEY_SERVICE}. Save a valid key there, or delete the item to use the claude.ai login.`
-      : 'Claude Code is not signed in. In Terminal run: env -u ANTHROPIC_API_KEY claude auth login';
+      : 'Claude Code is not signed in to claude.ai (needed for browser tasks and the briefing). In Terminal run: env -u ANTHROPIC_API_KEY claude auth login';
   }
   return said || `Claude reported an error (${kind}).`;
 }

@@ -84,7 +84,7 @@ scripts/create-signing-cert.sh
 scripts/install.sh
 ```
 
-Sign Claude Code in with your claude.ai account. If your shell exports `ANTHROPIC_API_KEY`, hide
+Sign Claude Code in with your claude.ai account (browser tasks and the briefing need it even with an API key). If your shell exports `ANTHROPIC_API_KEY`, hide
 it for this one command, because the orb deliberately ignores API keys and uses your login:
 
 ```bash
