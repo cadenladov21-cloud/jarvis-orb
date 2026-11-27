@@ -53,8 +53,11 @@ Helper -> app:
   request sounds like a browser task) and the approval hook registered through `--settings`.
 - Anything Claude Code would ask permission for, and any browser action that can change a page,
   goes to the hook. The hook asks the app, which shows a card; no answer means denied.
-- The helper strips `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` so Claude Code uses the
-  claude.ai login.
+- If the Keychain has a `JarvisOrb-Anthropic` item, non-browser requests pass Claude Code an
+  `apiKeyHelper` that reads it, so they are billed to that API account. Browser requests and the
+  briefing keep the claude.ai login (Claude in Chrome and the Gmail connector need it).
+- The helper strips `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` from the environment, so a key
+  exported in a shell is never used by accident.
 - The activity log records tool names, approvals and outcomes, never request or reply text.
 
 ## Rendering

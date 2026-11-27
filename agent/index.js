@@ -23,7 +23,7 @@
 // which waits for the owner's Approve/Deny card. No answer means deny. Nothing here logs the
 // task text or the reply.
 
-import { execFile, spawn } from 'node:child_process';
+import { execFile, execFileSync, spawn } from 'node:child_process';
 import { appendFile, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
 import { homedir } from 'node:os';
@@ -61,6 +61,10 @@ const browserChats = new Set();
 const LOG_DIR = join(homedir(), 'Library/Logs/JarvisOrb');
 const CANCEL_GRACE_MS = 3000;
 const HOOK_TIMEOUT_S = 300;
+// An optional Anthropic API key in the Keychain (service JarvisOrb-Anthropic). When it is there,
+// requests are billed to the API account instead of the claude.ai plan. Browser requests and the
+// briefing still use the claude.ai login: Claude in Chrome and the Gmail connector need it.
+const API_KEY_SERVICE = 'JarvisOrb-Anthropic';
 // A request that runs this long is stopped (a stuck page or loop shouldn't run all afternoon).
 const MAX_TASK_MS = 10 * 60 * 1000;
 
@@ -144,12 +148,25 @@ function quote(arg) {
   return `'${arg.replace(/'/g, `'\\''`)}'`;
 }
 
-function hookSettings() {
+// Checked on every start, so a key saved or removed while the app runs takes effect on the next
+// request. Claude Code reads the key itself through apiKeyHelper; it never passes through here.
+function hasApiKey() {
+  try {
+    execFileSync('/usr/bin/security', ['find-generic-password', '-s', API_KEY_SERVICE], { stdio: 'ignore', timeout: 5000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function hookSettings(useApiKey) {
   const command = `${quote(process.execPath)} ${quote(HOOK)} ${quote(SOCKET)}`;
   const handler = [{ matcher: '*', hooks: [{ type: 'command', command, timeout: HOOK_TIMEOUT_S }] }];
   // Claude Code's own auto memory is off: its writes would each need a card. Jarvis uses
   // memory.js instead.
-  return JSON.stringify({ autoMemoryEnabled: false, hooks: { PermissionRequest: handler, PreToolUse: handler } });
+  const settings = { autoMemoryEnabled: false, hooks: { PermissionRequest: handler, PreToolUse: handler } };
+  if (useApiKey) settings.apiKeyHelper = `/usr/bin/security find-generic-password -s ${API_KEY_SERVICE} -w`;
+  return JSON.stringify(settings);
 }
 
 // ------------------------------------------------------------------ approvals
@@ -386,6 +403,7 @@ let current = null;
 const IDLE_SESSION_MS = 10 * 60 * 1000;
 
 function spawnSession(chatId, model, browser) {
+  const useApiKey = !browser && hasApiKey();
   const args = [
     '-p',
     '--input-format', 'stream-json',
@@ -401,14 +419,14 @@ function spawnSession(chatId, model, browser) {
     `Bash(${MAC_TOOL} *)`,
     ...(browser ? ['--chrome'] : []),
     '--strict-mcp-config',
-    '--settings', hookSettings(),
+    '--settings', hookSettings(useApiKey),
     '--append-system-prompt', systemPrompt(),
   ];
   const session = sessions.get(chatId);
   if (session) args.push('--resume', session);
 
   const child = spawn(CLAUDE, args, { cwd: WORKDIR, env: childEnv(), stdio: ['pipe', 'pipe', 'pipe'] });
-  const proc = { chatId, model, browser, child, exited: false, task: null, idleTimer: null, stderr: '', resumed: !!session };
+  const proc = { chatId, model, browser, useApiKey, child, exited: false, task: null, idleTimer: null, stderr: '', resumed: !!session };
 
   readline.createInterface({ input: child.stdout }).on('line', (line) => {
     let m;
@@ -482,7 +500,7 @@ function startTask({ id, chatId, text, model }) {
   const task = { id, chatId, proc, child: proc.child, cancelled: false, finished: false, wroteText: false, inText: false };
   proc.task = task;
   current = task;
-  audit({ task: id, event: 'task-start', model, resumed: proc.resumed, browser: proc.browser, chars: text.length });
+  audit({ task: id, event: 'task-start', model, resumed: proc.resumed, browser: proc.browser, apiKey: proc.useApiKey, chars: text.length });
   rememberRequest(text);
   send({ type: 'state', id, state: 'thinking' });
   task.timer = setTimeout(() => {
@@ -548,7 +566,9 @@ function handleLine(task, m) {
 
 function describeError(kind, said) {
   if (kind === 'authentication_failed') {
-    return 'Claude Code is not signed in. In Terminal run: env -u ANTHROPIC_API_KEY claude auth login';
+    return hasApiKey()
+      ? `Claude rejected the API key in the Keychain item ${API_KEY_SERVICE}. Save a valid key there, or delete the item to use the claude.ai login.`
+      : 'Claude Code is not signed in. In Terminal run: env -u ANTHROPIC_API_KEY claude auth login';
   }
   return said || `Claude reported an error (${kind}).`;
 }

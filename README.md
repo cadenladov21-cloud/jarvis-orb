@@ -91,6 +91,20 @@ it for this one command, because the orb deliberately ignores API keys and uses 
 env -u ANTHROPIC_API_KEY claude auth login
 ```
 
+### Optional: pay per request with an API key
+
+By default requests count toward your claude.ai plan's limits. To bill them to an Anthropic API
+account instead, save an API key in the Keychain (Jarvis checks before each new Claude process, so no
+restart is needed):
+
+```bash
+security add-generic-password -U -a "$USER" -s JarvisOrb-Anthropic -w
+```
+
+Browser tasks and the daily briefing still use your claude.ai login, because Claude in Chrome and
+the Gmail connector need it. Delete the item to go back to the plan for everything:
+`security delete-generic-password -s JarvisOrb-Anthropic`.
+
 ### Permissions
 
 macOS asks the first time each feature is used. All of them are optional.
@@ -118,8 +132,9 @@ macOS asks the first time each feature is used. All of them are optional.
 
 ## Privacy and safety
 
-- Everything runs on your Mac with your own Claude Code login. The orb ignores API keys in the
-  environment, and keys you add (ElevenLabs) live in the Keychain.
+- Everything runs on your Mac with your own Claude Code login, or your own API key if you add one.
+  The orb ignores API keys in the environment; keys you add (Anthropic, ElevenLabs) live in the
+  Keychain and are never written to disk or logs.
 - What Jarvis remembers, your recent requests and chat sessions stay on your Mac in
   `~/Library/Application Support/JarvisOrb` and Claude Code's own session folder. The activity
   log (`~/Library/Logs/JarvisOrb`) records which tools ran and your Approve/Deny answers, never
